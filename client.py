@@ -1,95 +1,16 @@
 import socket
-import numpy as np
 
 
 HOST = "127.0.0.1"
-PORT = 5000
+PORT = 5003
 
 
-# ---------------------------------------------------------
-# Find modular inverse
-# ---------------------------------------------------------
-def mod_inverse(a, m):
-    a = a % m
-
-    for x in range(1, m):
-        if (a * x) % m == 1:
-            return x
-
-    return None
-
-
-# ---------------------------------------------------------
-# Convert text to numbers
-# ---------------------------------------------------------
-def text_to_numbers(text):
-    return [ord(char) - ord('A') for char in text]
-
-
-# ---------------------------------------------------------
-# Convert numbers to text
-# ---------------------------------------------------------
-def numbers_to_text(numbers):
-    return ''.join(chr(int(num) + ord('A')) for num in numbers)
-
-
-# ---------------------------------------------------------
-# Find inverse key matrix modulo 26
-# ---------------------------------------------------------
-def inverse_matrix_mod26(matrix):
-
-    a, b = matrix[0]
-    c, d = matrix[1]
-
-    determinant = (a * d - b * c) % 26
-
-    inverse_det = mod_inverse(determinant, 26)
-
-    if inverse_det is None:
-        raise ValueError("Key matrix has no modular inverse.")
-
-    inverse_matrix = np.array([
-        [d, -b],
-        [-c, a]
-    ])
-
-    inverse_matrix = (inverse_det * inverse_matrix) % 26
-
-    return inverse_matrix.astype(int)
-
-
-# ---------------------------------------------------------
-# Hill Cipher Decryption
-# ---------------------------------------------------------
-def hill_decrypt(ciphertext, key_matrix):
-
-    inverse_key = inverse_matrix_mod26(key_matrix)
-
-    numbers = text_to_numbers(ciphertext)
-
-    plaintext = []
-
-    for i in range(0, len(numbers), 2):
-
-        block = np.array([
-            [numbers[i]],
-            [numbers[i + 1]]
-        ])
-
-        decrypted_block = np.dot(inverse_key, block) % 26
-
-        plaintext.extend(decrypted_block.flatten())
-
-    return numbers_to_text(plaintext)
-
-
-# ---------------------------------------------------------
-# Client
-# ---------------------------------------------------------
 print("======================================")
-print("       HILL CIPHER CLIENT")
+print("     DIFFIE-HELLMAN CLIENT")
 print("======================================")
 
+
+# Create client socket
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 print("Connecting to server...")
@@ -98,39 +19,73 @@ client_socket.connect((HOST, PORT))
 
 print("Connected to server.")
 
-# Enter plaintext
-plaintext = input("\nEnter plaintext: ")
 
-print("\n========== SENDING PLAINTEXT ==========")
-print("Plaintext:", plaintext)
+# ---------------------------------------------------------
+# Receive public parameters and server public key
+# ---------------------------------------------------------
+data = client_socket.recv(4096).decode()
 
-# Send plaintext to server
-client_socket.send(plaintext.encode())
+p, g, server_public_key = data.split("|")
 
-# Receive ciphertext
-ciphertext = client_socket.recv(4096).decode()
+p = int(p)
+g = int(g)
+server_public_key = int(server_public_key)
 
-print("\n========== RECEIVED CIPHERTEXT ==========")
-print("Ciphertext:", ciphertext)
 
-# Hill Cipher key
-key_matrix = np.array([
-    [3, 3],
-    [2, 5]
-])
+print("\n========== RECEIVED FROM SERVER ==========")
+print("Prime number (p):", p)
+print("Generator (g)  :", g)
+print("Server Public Key:", server_public_key)
 
-print("\n========== KEY MATRIX ==========")
-print(key_matrix)
 
-# Decrypt
-decrypted_text = hill_decrypt(ciphertext, key_matrix)
+# ---------------------------------------------------------
+# Client private key
+# ---------------------------------------------------------
+private_key = 15
 
-print("\n========== DECRYPTION ==========")
-print("Ciphertext :", ciphertext)
-print("Plaintext  :", decrypted_text)
+print("\nClient Private Key:", private_key)
+
+
+# ---------------------------------------------------------
+# Client public key
+# B = g^b mod p
+# ---------------------------------------------------------
+public_key = pow(g, private_key, p)
+
+print("Client Public Key :", public_key)
+
+
+# Send client public key to server
+client_socket.send(str(public_key).encode())
+
+
+# ---------------------------------------------------------
+# Calculate shared secret
+# Secret = A^b mod p
+# ---------------------------------------------------------
+shared_secret = pow(server_public_key, private_key, p)
+
+print("\n========== SHARED SECRET ==========")
+print("Client Shared Secret:", shared_secret)
+
+
+# Receive server's shared secret
+server_secret = int(client_socket.recv(4096).decode())
+
+print("\n========== VERIFICATION ==========")
+print("Client Shared Secret :", shared_secret)
+print("Server Shared Secret :", server_secret)
+
+
+if shared_secret == server_secret:
+    print("SUCCESS: Both sides have the same secret key.")
+else:
+    print("ERROR: Shared keys do not match.")
+
 
 print("\n======================================")
-print("       HILL CIPHER COMPLETED")
+print(" DIFFIE-HELLMAN KEY EXCHANGE COMPLETED")
 print("======================================")
+
 
 client_socket.close()
